@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import WeatherSystem from "./weather.js";
+import WeatherUI from "./weatherUI.js";
 
 const canvas = document.querySelector("#sim-canvas");
 const loading = document.querySelector("#loading");
@@ -82,6 +84,10 @@ const aircraftVisual = new THREE.Group();
 aircraft.add(aircraftVisual);
 let groundShadow;
 
+// Weather system initialization
+const weather = new WeatherSystem();
+const weatherUI = new WeatherUI(weather);
+
 const renderProbe = {
   frame: 0,
   pixel: new Uint8Array(4),
@@ -97,6 +103,16 @@ createProceduralA350();
 loadLicensedA350Model();
 bindControls();
 resize();
+
+// Initialize weather UI
+weatherUI.init(document.querySelector(".sim-shell"));
+
+// Add weather CSS
+const weatherCssLink = document.createElement("link");
+weatherCssLink.rel = "stylesheet";
+weatherCssLink.href = "./src/weatherStyles.css";
+document.head.appendChild(weatherCssLink);
+
 setTimeout(() => loading.classList.add("is-hidden"), 700);
 renderer.setAnimationLoop(animate);
 
@@ -127,24 +143,6 @@ function createWorld() {
   field.rotation.x = -Math.PI / 2;
   field.receiveShadow = true;
   scene.add(field);
-
-  import WeatherSystem from './weather.js';
-import WeatherUI from './weatherUI.js';
-
-// After your Three.js scene setup:
-const weather = new WeatherSystem();
-const weatherUI = new WeatherUI(weather);
-weatherUI.init(document.querySelector('.sim-shell'));
-
-// Add CSS
-const link = document.createElement('link');
-link.rel = 'stylesheet';
-link.href = './src/weatherStyles.css';
-document.head.appendChild(link);
-
-// In your animation loop:
-weather.updateWeather(deltaTime);
-weatherUI.update();
 
   const waterMaterial = new THREE.MeshStandardMaterial({
     color: 0x2d8ebf,
@@ -609,6 +607,11 @@ function animate() {
   updateCamera(dt);
   updateHud();
   updateTelemetry();
+  
+  // Update weather
+  weather.updateWeather(dt);
+  weatherUI.update();
+  
   renderer.render(scene, camera);
   updateRenderProbe();
 }
