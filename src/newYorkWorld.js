@@ -3,6 +3,8 @@
  * Creates a detailed New York City environment with landmarks and terrain
  */
 
+import * as THREE from "three";
+
 export function createNewYorkWorld(scene) {
   // Sky background - NYC overcast look
   scene.background.setHex(0x8fa3b8);
@@ -95,7 +97,7 @@ export function createNewYorkWorld(scene) {
   createManhattanGridBuildings(scene);
 
   // Bridges
-  createBrooklyn Bridge(scene);
+  createBrooklynBridge(scene);
   createGeorgeWashingtonBridge(scene);
 
   // Water features and piers
@@ -298,7 +300,7 @@ function createManhattanGridBuildings(scene) {
   }
 }
 
-function createBrooklyn Bridge(scene) {
+function createBrooklynBridge(scene) {
   const cableMaterial = new THREE.MeshStandardMaterial({
     color: 0x444444,
     roughness: 0.7,
