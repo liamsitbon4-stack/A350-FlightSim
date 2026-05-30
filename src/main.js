@@ -185,14 +185,14 @@ function createRunway() {
     metalness: 0.01,
   });
   const runway = new THREE.Mesh(new THREE.BoxGeometry(92, 0.18, 3100), asphalt);
-  runway.position.y = 0.02;
+  runway.position.y = 45;
   runway.receiveShadow = true;
   runwayGroup.add(runway);
 
   const shoulderMat = new THREE.MeshStandardMaterial({ color: 0x303740, roughness: 0.82 });
   [-62, 62].forEach((x) => {
     const shoulder = new THREE.Mesh(new THREE.BoxGeometry(18, 0.14, 3100), shoulderMat);
-    shoulder.position.set(x, 0.025, 0);
+    shoulder.position.set(x, 45.025, 0);
     shoulder.receiveShadow = true;
     runwayGroup.add(shoulder);
   });
@@ -204,19 +204,19 @@ function createRunway() {
   });
   for (let z = -1420; z <= 1420; z += 140) {
     const centerLine = new THREE.Mesh(new THREE.BoxGeometry(4, 0.05, 54), markingMat);
-    centerLine.position.set(0, 0.16, z);
+    centerLine.position.set(0, 45.16, z);
     runwayGroup.add(centerLine);
   }
 
   [-1355, 1355].forEach((z) => {
     const threshold = new THREE.Mesh(new THREE.BoxGeometry(70, 0.055, 10), markingMat);
-    threshold.position.set(0, 0.17, z);
+    threshold.position.set(0, 45.17, z);
     runwayGroup.add(threshold);
 
     for (let i = -3; i <= 3; i += 1) {
       if (i === 0) continue;
       const bar = new THREE.Mesh(new THREE.BoxGeometry(7, 0.06, 60), markingMat);
-      bar.position.set(i * 10, 0.18, z + Math.sign(z) * -52);
+      bar.position.set(i * 10, 45.18, z + Math.sign(z) * -52);
       runwayGroup.add(bar);
     }
   });
@@ -229,7 +229,7 @@ function createRunway() {
   for (let z = -1480; z <= 1480; z += 100) {
     [-58, 58].forEach((x) => {
       const light = new THREE.Mesh(new THREE.SphereGeometry(2.4, 10, 8), lightMat);
-      light.position.set(x, 2.8, z);
+      light.position.set(x, 47.8, z);
       runwayGroup.add(light);
     });
   }
@@ -302,7 +302,7 @@ function createAircraftShadow() {
     color: 0x071018,
     transparent: true,
     opacity: 0.36,
-    depthWrite: false,
+    depthWrite: true,
   });
   groundShadow = new THREE.Mesh(new THREE.CircleGeometry(34, 42), shadowMaterial);
   groundShadow.rotation.x = -Math.PI / 2;
