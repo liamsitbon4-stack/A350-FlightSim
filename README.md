@@ -16,19 +16,20 @@ git clone https://github.com/Liamsitbon/A350-FlightSim.git
 
 ## How To Update?
 
-Go to the terminal/cmd folder and do this:
+Go to the CMD/Terminal folder and do this:
 
 ```bash
 git pull
 ```
+## How To Open The Game?
 
-## Run locally
+Run locally in CMD/Terminal:
 
 ```bash
 python3 -m http.server 5173
 ```
 
-Then open:
+Then open in internet browser:
 
 ```text
 http://localhost:5173
