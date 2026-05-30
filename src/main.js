@@ -21,7 +21,10 @@ const hud = {
   missionState: document.querySelector("#mission-state"),
   flightMode: document.querySelector("#flight-mode"),
   attitudeBg: document.querySelector("#attitude-bg"),
+  pitchAngle: document.querySelector("#pitch-angle"),
   bankAngle: document.querySelector("#bank-angle"),
+  yawAngle: document.querySelector("#yaw-angle"),
+  rollRate: document.querySelector("#roll-rate"),
   stallIndicator: document.querySelector("#stall-indicator"),
   controlButtons: [...document.querySelectorAll("[data-control]")],
 };
@@ -42,8 +45,13 @@ const checkpoints = [];
 // Physics constants
 const STALL_SPEED_KTS = 60;
 const CRUISE_SPEED_KTS = 450;
-const MAX_PITCH_ANGLE = Math.PI / 3; // 60 degrees
-const MAX_ROLL_ANGLE = Math.PI / 2.5; // 72 degrees
+const MAX_PITCH_ANGLE = THREE.MathUtils.degToRad(72);
+const STEEP_BANK_ANGLE = THREE.MathUtils.degToRad(60);
+const MAX_PITCH_RATE = THREE.MathUtils.degToRad(46);
+const MAX_ROLL_RATE = THREE.MathUtils.degToRad(145);
+const MAX_YAW_RATE = THREE.MathUtils.degToRad(36);
+const CAMERA_MIN_DISTANCE = 64;
+const CAMERA_MAX_DISTANCE = 240;
 const GRAVITY = 9.81;
 
 // Warning system
@@ -67,6 +75,12 @@ const state = {
   yawInput: 0,
   roll: 0,
   yaw: 0,
+  pitchRate: 0,
+  rollRate: 0,
+  yawRate: 0,
+  cameraYawOffset: 0,
+  cameraPitchOffset: 0.08,
+  cameraDistance: 128,
   airborne: false,
   missionIndex: 0,
   missionPulse: 0,
@@ -126,6 +140,7 @@ createAircraftShadow();
 createProceduralA350();
 loadLicensedA350Model();
 bindControls();
+bindWeatherEvents();
 createWarningSystem();
 resize();
 
@@ -526,6 +541,16 @@ function toggleSpeedBrake() {
   state.speedBrake = !state.speedBrake;
 }
 
+function bindWeatherEvents() {
+  window.addEventListener("weatherColorChanged", (event) => {
+    const weatherColor = Number(event.detail?.color);
+    if (!Number.isFinite(weatherColor)) return;
+
+    scene.background.setHex(weatherColor);
+    scene.fog.color.setHex(weatherColor);
+  });
+}
+
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -570,6 +595,7 @@ function triggerWarning(type) {
     "overspeed": { text: "OVERSPEED", color: "#ff7b72", icon: "⚠️" },
     "terrain-warning": { text: "TERRAIN WARNING", color: "#ff7b72", icon: "🚨" },
     "configuration": { text: "CHECK CONFIGURATION", color: "#ffc857", icon: "⚠️" },
+    "bank-angle": { text: "STEEP BANK", color: "#ffc857", icon: "⚠️" },
     "landing-gear": { text: "LANDING GEAR", color: "#6ee7f9", icon: "ℹ️" },
     "gear-deployed": { text: "GEAR DOWN", color: "#6ee7f9", icon: "✓" },
   };
@@ -603,8 +629,27 @@ function triggerWarning(type) {
   }, 3000);
 }
 
+function normalizeAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function damping(rate, dt) {
+  return Math.exp(-rate * dt);
+}
+
+function signedDegrees(angle) {
+  const degrees = Math.round(THREE.MathUtils.radToDeg(normalizeAngle(angle)));
+  return `${degrees > 0 ? "+" : ""}${degrees}°`;
+}
+
+function bankLabel(angle) {
+  const degrees = Math.round(THREE.MathUtils.radToDeg(normalizeAngle(angle)));
+  if (degrees === 0) return "0°";
+  return `${degrees > 0 ? "L" : "R"} ${Math.abs(degrees)}°`;
+}
+
 function updateFlightModel(dt) {
-  const speedKts = state.airspeed * MS_TO_KNOTS;
+  let speedKts = state.airspeed * MS_TO_KNOTS;
   state.altitude = Math.max(0, state.position.y - GROUND_Y);
   
   // Calculate angle of attack
@@ -638,23 +683,49 @@ function updateFlightModel(dt) {
   const brake = keys.has("Space") ? 8.5 : 0;
   
   state.airspeed = Math.max(0, state.airspeed + (thrust - totalDrag - brake) * dt);
+  speedKts = state.airspeed * MS_TO_KNOTS;
 
   // Check overspeed
   if (speedKts > 530) {
     triggerWarning("overspeed");
   }
 
-  // Lift calculation based on speed, AoA, and flaps
+  if (state.airborne && weather.turbulence > 0.03) {
+    const turbulence = weather.getTurbulenceEffect();
+    state.pitchRate += turbulence.pitch * 0.26 * dt;
+    state.rollRate += turbulence.roll * 0.34 * dt;
+    state.yawRate += turbulence.yaw * 0.22 * dt;
+    state.verticalSpeed += turbulence.vertical * dt;
+  }
+
+  // Lift calculation based on speed, AoA, flaps, and bank angle.
   const liftCoeff = Math.sin(state.aoa) * 0.8 + (state.flaps * 0.15);
   const lift = Math.max(0, (speedKts - stallSpeed + state.flaps * 12) / 86 * liftCoeff);
+  const rollLiftFactor = Math.cos(normalizeAngle(state.roll));
+  const bankedLift = rollLiftFactor < 0 ? Math.max(-0.55, rollLiftFactor) : Math.max(0.2, rollLiftFactor);
   const pitchLift = Math.sin(state.pitch) * state.airspeed * 2.55;
-  const targetVerticalSpeed = (lift - 0.5) * 7.5 + pitchLift;
+  const gravitySink = state.airborne ? GRAVITY * 0.08 : 0;
+  const targetVerticalSpeed = (lift - 0.5) * 7.5 * bankedLift + pitchLift - gravitySink;
   const response = state.airborne ? 1.7 : 0.9;
   state.verticalSpeed = THREE.MathUtils.lerp(state.verticalSpeed, targetVerticalSpeed, response * dt);
 
-  // Forward movement
+  if (state.airborne && Math.abs(normalizeAngle(state.roll)) > STEEP_BANK_ANGLE) {
+    triggerWarning("bank-angle");
+  }
+
+  // Forward movement, with wind changing ground track instead of just HUD numbers.
+  const headingDeg = ((THREE.MathUtils.radToDeg(state.yaw) % 360) + 360) % 360;
+  const wind = weather.getWindEffect(headingDeg);
+  const headwindMs = wind.headwind / MS_TO_KNOTS;
+  const crosswindMs = wind.crosswind / MS_TO_KNOTS;
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
-  state.position.addScaledVector(forward, state.airspeed * dt);
+  const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
+  const pitchForwardFactor = THREE.MathUtils.clamp(Math.cos(state.pitch), 0.12, 1);
+  const groundSpeed = Math.max(0, state.airspeed * pitchForwardFactor - headwindMs * (state.airborne ? 0.45 : 0.12));
+  state.position.addScaledVector(forward, groundSpeed * dt);
+  if (state.airborne) {
+    state.position.addScaledVector(right, crosswindMs * 0.45 * dt);
+  }
 
   // Rotation readiness - no automatic thrust boost
   const rotationReady = speedKts > 74 && state.pitch > 0.035;
@@ -672,13 +743,16 @@ function updateFlightModel(dt) {
       state.verticalSpeed = 0;
       state.airborne = false;
       state.pitch = Math.max(state.pitch, 0);
+      state.pitchRate = 0;
+      state.rollRate = 0;
+      state.yawRate *= 0.35;
       triggerWarning("landing-gear");
     }
   } else {
     state.position.y = GROUND_Y;
     state.verticalSpeed = 0;
-    state.roll *= 0.92;
-    state.yaw += state.yawInput * 0.24 * dt;
+    state.roll = THREE.MathUtils.lerp(state.roll, 0, THREE.MathUtils.clamp(4.2 * dt, 0, 1));
+    state.rollRate = 0;
   }
 
   // Low altitude warning
@@ -748,13 +822,20 @@ function updateMission(dt) {
 }
 
 function updateCamera(dt) {
-  const back = new THREE.Vector3(0, 0, -1).applyAxisAngle(WORLD_UP, state.yaw);
-  const side = new THREE.Vector3(1, 0, 0).applyAxisAngle(WORLD_UP, state.yaw);
+  const cameraYaw = state.yaw + state.cameraYawOffset;
+  const back = new THREE.Vector3(0, 0, -1).applyAxisAngle(WORLD_UP, cameraYaw);
+  const side = new THREE.Vector3(1, 0, 0).applyAxisAngle(WORLD_UP, cameraYaw);
+  const distance = state.cameraDistance * Math.cos(state.cameraPitchOffset);
+  const cameraHeight =
+    34 +
+    state.cameraDistance * Math.sin(state.cameraPitchOffset) +
+    Math.abs(normalizeAngle(state.roll)) * 10 +
+    Math.max(0, state.position.y - GROUND_Y) * 0.08;
   const cameraTarget = state.position
     .clone()
-    .addScaledVector(back, 128)
-    .addScaledVector(side, state.roll * 22)
-    .add(new THREE.Vector3(0, 38 + Math.abs(state.roll) * 18 + Math.max(0, state.position.y - GROUND_Y) * 0.08, 0));
+    .addScaledVector(back, distance)
+    .addScaledVector(side, normalizeAngle(state.roll) * 14)
+    .add(new THREE.Vector3(0, cameraHeight, 0));
   camera.position.lerp(cameraTarget, 1 - Math.exp(-3.2 * dt));
 
   const lookAt = state.position
@@ -776,18 +857,75 @@ function updateInputs(dt) {
   state.yawInput =
     axisInput(["KeyA", "KeyQ"], ["KeyD", "KeyE"], "yaw-left", "yaw-right");
 
-  // Do NOT automatically increase throttle when pitching up
-  // This ensures proper manual control
-
   hud.throttleInput.value = Math.round(state.throttle * 100);
 
-  const targetPitch = THREE.MathUtils.clamp(state.pitchInput * 0.38, -MAX_PITCH_ANGLE, MAX_PITCH_ANGLE);
-  const targetRoll = THREE.MathUtils.clamp(state.rollInput * 0.58, -MAX_ROLL_ANGLE, MAX_ROLL_ANGLE);
-  const targetYaw = state.yawInput * 0.5;
+  updateAttitudeControls(dt);
+  updateCameraControls(dt);
+}
 
-  state.pitch = THREE.MathUtils.lerp(state.pitch, targetPitch, 4.2 * dt);
-  state.roll = THREE.MathUtils.lerp(state.roll, targetRoll, 4.5 * dt);
-  state.yaw += (targetYaw + Math.sin(state.roll) * 0.42) * dt;
+function updateAttitudeControls(dt) {
+  const speedKts = state.airspeed * MS_TO_KNOTS;
+  const elevatorAuthority = state.airborne
+    ? THREE.MathUtils.clamp(speedKts / 150, 0.35, 1)
+    : THREE.MathUtils.smoothstep(speedKts, 42, 92) * 0.72;
+  const aileronAuthority = state.airborne ? THREE.MathUtils.clamp(speedKts / 170, 0.38, 1) : 0;
+  const rudderAuthority = state.airborne
+    ? THREE.MathUtils.clamp(speedKts / 185, 0.32, 1)
+    : THREE.MathUtils.clamp(speedKts / 72, 0, 0.48);
+
+  state.pitchRate += state.pitchInput * THREE.MathUtils.degToRad(58) * elevatorAuthority * dt;
+  state.rollRate += state.rollInput * THREE.MathUtils.degToRad(176) * aileronAuthority * dt;
+  state.yawRate += state.yawInput * THREE.MathUtils.degToRad(64) * rudderAuthority * dt;
+
+  state.pitchRate = THREE.MathUtils.clamp(
+    state.pitchRate,
+    -MAX_PITCH_RATE * Math.max(0.35, elevatorAuthority),
+    MAX_PITCH_RATE * Math.max(0.35, elevatorAuthority),
+  );
+  state.rollRate = THREE.MathUtils.clamp(state.rollRate, -MAX_ROLL_RATE, MAX_ROLL_RATE);
+  state.yawRate = THREE.MathUtils.clamp(state.yawRate, -MAX_YAW_RATE, MAX_YAW_RATE);
+
+  state.pitchRate *= damping(state.pitchInput ? 1.45 : 3.1, dt);
+  state.rollRate *= damping(state.rollInput ? 0.72 : 1.18, dt);
+  state.yawRate *= damping(state.yawInput ? 1.35 : 2.45, dt);
+
+  const bankTurnRate = state.airborne
+    ? Math.sin(normalizeAngle(state.roll)) * THREE.MathUtils.clamp(speedKts / CRUISE_SPEED_KTS, 0.14, 1) * 0.72
+    : 0;
+
+  state.pitch += state.pitchRate * dt;
+  state.roll = normalizeAngle(state.roll + state.rollRate * dt);
+  state.yaw = normalizeAngle(state.yaw + (state.yawRate + bankTurnRate) * dt);
+
+  if (state.pitch > MAX_PITCH_ANGLE) {
+    state.pitch = MAX_PITCH_ANGLE;
+    state.pitchRate = Math.min(0, state.pitchRate);
+  } else if (state.pitch < -MAX_PITCH_ANGLE) {
+    state.pitch = -MAX_PITCH_ANGLE;
+    state.pitchRate = Math.max(0, state.pitchRate);
+  }
+
+  if (!state.airborne && speedKts < 45 && state.pitchInput === 0) {
+    state.pitch = THREE.MathUtils.lerp(state.pitch, 0, THREE.MathUtils.clamp(2.2 * dt, 0, 1));
+  }
+}
+
+function updateCameraControls(dt) {
+  const yawInput = axisInput([], [], "camera-left", "camera-right");
+  const pitchInput = axisInput([], [], "camera-up", "camera-down");
+  const zoomInput = axisInput([], [], "camera-zoom-in", "camera-zoom-out");
+
+  state.cameraYawOffset += yawInput * 1.8 * dt;
+  state.cameraPitchOffset = THREE.MathUtils.clamp(
+    state.cameraPitchOffset + pitchInput * 1.25 * dt,
+    -0.28,
+    0.78,
+  );
+  state.cameraDistance = THREE.MathUtils.clamp(
+    state.cameraDistance - zoomInput * 92 * dt,
+    CAMERA_MIN_DISTANCE,
+    CAMERA_MAX_DISTANCE,
+  );
 }
 
 function axisInput(positiveKeys, negativeKeys, positiveControl, negativeControl) {
@@ -813,7 +951,6 @@ function updateHud() {
   const altitudeFt = Math.max(0, Math.round(state.altitude * METERS_TO_FEET));
   const verticalFpm = Math.round(state.verticalSpeed * 196.85);
   const heading = ((THREE.MathUtils.radToDeg(state.yaw) % 360) + 360) % 360;
-  const bankAngle = THREE.MathUtils.radToDeg(state.roll);
 
   hud.speed.textContent = speedKts.toString().padStart(3, "0");
   hud.altitude.textContent = altitudeFt.toString();
@@ -822,7 +959,10 @@ function updateHud() {
   hud.throttleOutput.textContent = `${Math.round(state.throttle * 100)}%`;
   hud.flapsOutput.textContent = state.flaps.toString();
   hud.gearState.textContent = state.gearDown ? "GEAR DOWN" : "GEAR UP";
-  hud.bankAngle.textContent = `${Math.abs(Math.round(bankAngle))}°`;
+  hud.pitchAngle.textContent = signedDegrees(state.pitch);
+  hud.bankAngle.textContent = bankLabel(state.roll);
+  hud.yawAngle.textContent = Math.round(heading).toString().padStart(3, "0");
+  hud.rollRate.textContent = `${Math.round(THREE.MathUtils.radToDeg(state.rollRate))}°/s`;
 
   // Update stall indicator
   const stallSpeed = STALL_SPEED_KTS + (state.flaps * 3);
@@ -850,7 +990,7 @@ function updateHud() {
   }
 
   const pitchOffset = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(state.pitch) * 1.45, -35, 35);
-  hud.attitudeBg.style.transform = `translateY(${pitchOffset}px) rotate(${-THREE.MathUtils.radToDeg(state.roll)}deg)`;
+  hud.attitudeBg.style.transform = `translateY(${pitchOffset}px) rotate(${-THREE.MathUtils.radToDeg(normalizeAngle(state.roll))}deg)`;
 }
 
 function updateRenderProbe() {

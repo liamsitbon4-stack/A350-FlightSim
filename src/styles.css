@@ -117,10 +117,10 @@ input {
 
 .hud-right {
   top: 112px;
-  right: 18px;
+  right: 232px;
   display: grid;
   gap: 14px;
-  width: 100px;
+  width: 104px;
   padding: 14px 12px;
   border-radius: 8px;
 }
@@ -149,9 +149,17 @@ input {
   border-radius: 4px;
 }
 
-#bank-angle {
+#pitch-angle,
+#bank-angle,
+#yaw-angle,
+#roll-rate {
   background: rgba(110, 231, 249, 0.1);
   color: var(--cyan);
+}
+
+#roll-rate {
+  background: rgba(255, 200, 87, 0.12);
+  color: var(--amber);
 }
 
 #stall-indicator {
@@ -631,12 +639,13 @@ input:focus-visible {
   }
 
   .hud-right {
-    top: auto;
-    right: 10px;
-    bottom: 160px;
-    width: 90px;
+    top: 178px;
+    right: auto;
+    bottom: auto;
+    left: 10px;
+    width: 88px;
     padding: 10px;
-    gap: 10px;
+    gap: 8px;
   }
 
   .indicator-block strong {

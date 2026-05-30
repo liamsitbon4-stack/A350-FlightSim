@@ -22,14 +22,15 @@ http://localhost:5173
 ## Controls
 
 - `W` / `S`: throttle
-- Arrow down / up: climb and descend
-- Arrow left / right: bank and turn
-- `A` / `D` or `Q` / `E`: yaw / rotate
+- Arrow down / up: pitch up and pitch down
+- Arrow left / right: roll left and roll right. Holding the key keeps rolling; releasing keeps the bank instead of snapping level.
+- `A` / `D` or `Q` / `E`: rudder yaw left and right
 - `K` / `I`: climb and descend
 - `J` / `L`: bank and turn
 - `G`: landing gear
 - `Space`: brakes
 - Left panel: throttle, flaps, gear
-- Right pad: up arrow descends, down arrow climbs, side arrows bank, curved arrows rotate
+- Right flight pad: pitch, roll, and yaw
+- Camera pad: pan around the aircraft and zoom in/out
 
-The climb control also applies takeoff thrust assist so the aircraft can leave the runway quickly in the current arcade flight model.
+The aircraft now uses attitude rates for pitch, roll, and yaw, so the controls change the aircraft's motion instead of playing a fixed animation. Weather wind and turbulence also affect the flight path.

@@ -174,10 +174,10 @@ export class WeatherSystem {
   /**
    * Apply random wind variation
    */
-  randomizeWind() {
-    const variation = (Math.random() - 0.5) * 10;
+  randomizeWind(deltaTime = 1) {
+    const variation = (Math.random() - 0.5) * 1.8 * deltaTime;
     this.windSpeed = Math.max(0, this.windSpeed + variation);
-    this.windDirection = (this.windDirection + (Math.random() - 0.5) * 30) % 360;
+    this.windDirection = (this.windDirection + (Math.random() - 0.5) * 9 * deltaTime + 360) % 360;
   }
 
   /**
@@ -269,18 +269,20 @@ Landing Difficulty: ${this.getLandingDifficulty()}/5
    * Update weather dynamically (for continuous weather changes)
    */
   updateWeather(deltaTime) {
+    const dt = Math.min(Math.max(deltaTime || 0, 0), 1);
+
     // Slowly vary turbulence
-    this.turbulence += (Math.random() - 0.5) * 0.01;
+    this.turbulence += (Math.random() - 0.5) * 0.015 * dt;
     this.turbulence = Math.max(0, Math.min(1, this.turbulence));
 
     // Slowly vary wind
-    this.randomizeWind();
+    this.randomizeWind(dt);
 
     // Slowly vary visibility based on precipitation
     if (this.precipitation > 0) {
-      this.visibility = Math.max(0.1, this.visibility - Math.random() * 0.01);
+      this.visibility = Math.max(0.1, this.visibility - Math.random() * 0.02 * dt);
     } else {
-      this.visibility = Math.min(10, this.visibility + Math.random() * 0.005);
+      this.visibility = Math.min(10, this.visibility + Math.random() * 0.01 * dt);
     }
   }
 
