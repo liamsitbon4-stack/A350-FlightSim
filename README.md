@@ -8,9 +8,18 @@ This first build runs as a static Three.js app and includes a procedural A350-90
 
 ## How To Download?
 
-just do
+Currently the simulator is only downloaded via git and is not available via Releases. Maybe in the future it will also be available via Releases but right now there is no reason. So this is how you download
+
 ```bash
 git clone https://github.com/Liamsitbon/A350-FlightSim.git
+```
+
+## How To Update?
+
+Go to the terminal/cmd folder and do this:
+
+```bash
+git pull
 ```
 
 ## Run locally
